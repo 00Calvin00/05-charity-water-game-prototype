@@ -13,3 +13,165 @@ Secondary Colors:
 - Pink:       #F16061
 
 */
+
+/* Store the colors as CSS variables so we can reuse them with var(--name) */
+:root {
+    --cw-yellow: #FFC907;
+    --cw-blue: #2E9DF7;
+    --cw-light-blue: #8BD1CB;
+    --cw-green: #4FCB53;
+    --cw-orange: #FF902A;
+    --cw-red: #F5402C;
+    --cw-dark-green: #159A48;
+    --cw-pink: #F16061;
+
+    --page-bg: #1e1e1e;
+    --grass: #a5c96a;
+    --meter-track: #d9d9d9;
+}
+
+/* ---------- Page ---------- */
+body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--page-bg);
+    font-family: Arial, Helvetica, sans-serif;
+    color: var(--cw-yellow);
+
+    /* Center the title and game box on the page */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+h1 {
+    margin: 20px 0;
+}
+
+/* ---------- Game box ---------- */
+#game {
+    /* position: relative makes this box the "anchor" for everything inside it.
+       Children with position: absolute are placed using left/top from this box's corner. */
+    position: relative;
+    width: 800px;
+    height: 600px;
+    background: var(--grass);
+    border-radius: 8px;
+    overflow: hidden; /* hide anything that goes outside the box */
+}
+
+#world {
+    position: absolute;
+    inset: 0; /* fill the whole game box */
+}
+
+/* ---------- Sprites (houses, trees, player) ---------- */
+.sprite {
+    position: absolute;
+    font-size: 44px;
+    line-height: 1;
+
+    /* Move the sprite up and left by half its size,
+       so its left/top values point to its CENTER instead of its corner.
+       This makes distance math easier later. */
+    transform: translate(-50%, -50%);
+    user-select: none;
+}
+
+.house {
+    font-size: 52px;
+}
+
+.tree {
+    font-size: 48px;
+}
+
+/* The water hole is drawn with CSS instead of an emoji */
+.water-hole {
+    width: 130px;
+    height: 85px;
+    background: var(--cw-blue);
+    border: 4px solid var(--cw-light-blue);
+    /* Uneven corner values make a "blob" shape instead of a perfect oval */
+    border-radius: 55% 45% 60% 40% / 50% 60% 40% 50%;
+}
+
+#player {
+    font-size: 40px;
+    z-index: 5; /* keep the player drawn on top of houses and trees */
+}
+
+/* ---------- HUD ---------- */
+#hud {
+    position: absolute;
+    inset: 0;
+    z-index: 10;          /* on top of the world and player */
+    pointer-events: none; /* clicks pass through the HUD to the game */
+}
+
+.hud-label {
+    font-weight: bold;
+    font-size: 14px;
+    color: var(--cw-yellow);
+    /* Dark outline so yellow text is readable on the grass */
+    text-shadow: 0 0 3px #000, 0 0 3px #000;
+}
+
+.hud-icon {
+    font-size: 28px;
+}
+
+/* Daylight tracker (vertical, top-left) */
+#day-tracker {
+    position: absolute;
+    left: 20px;
+    top: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+#day-bar {
+    position: relative;
+    width: 22px;
+    height: 260px;
+    background: var(--meter-track);
+    border: 2px solid #000;
+}
+
+#day-fill {
+    position: absolute;
+    bottom: 0; /* the fill sits at the bottom and shrinks downward */
+    width: 100%;
+    height: 100%; /* script.js changes this */
+    background: var(--cw-yellow);
+}
+
+/* Water level (horizontal, bottom-left) */
+#water-tracker {
+    position: absolute;
+    left: 20px;
+    bottom: 16px;
+}
+
+#water-bar {
+    width: 240px;
+    height: 24px;
+    background: var(--meter-track);
+    border: 2px solid #000;
+}
+
+#water-fill {
+    width: 60%; /* script.js changes this */
+    height: 100%;
+    background: var(--cw-blue);
+}
+
+/* Days survived (top-right) */
+#day-counter {
+    position: absolute;
+    right: 20px;
+    top: 20px;
+    font-size: 20px;
+}

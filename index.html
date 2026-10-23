@@ -3,11 +3,46 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Charity Water Game</title>
+    <title>Go Get The Water!</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <h1>Welcome to the Charity Water Game Prototype</h1>
+    <h1>Go Get The Water!</h1>
+
+    <!-- The game box. Everything inside is positioned relative to this box. -->
+    <main id="game">
+
+        <!-- The world: houses, trees and the water hole get added here by script.js -->
+        <div id="world"></div>
+
+        <!-- The player character -->
+        <div id="player" class="sprite">🧍</div>
+
+        <!-- HUD (heads-up display): sits on top of the world -->
+        <div id="hud">
+
+            <!-- Daylight tracker: the yellow bar shrinks as the day goes on -->
+            <div id="day-tracker">
+                <span class="hud-icon">☀️</span>
+                <div id="day-bar">
+                    <div id="day-fill"></div>
+                </div>
+                <span class="hud-icon">🌙</span>
+            </div>
+
+            <!-- Village water level: the blue bar shrinks as water is used up -->
+            <div id="water-tracker">
+                <div id="water-bar">
+                    <div id="water-fill"></div>
+                </div>
+                <span class="hud-label">Water Level</span>
+            </div>
+
+            <!-- How many days the village has survived -->
+            <div id="day-counter" class="hud-label">Day 1</div>
+        </div>
+    </main>
+
     <script src="script.js"></script>
 </body>
 </html>
