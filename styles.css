@@ -101,6 +101,30 @@ h1 {
     z-index: 5; /* keep the player drawn on top of houses and trees */
 }
 
+/* The water can the player holds (positioned relative to the player) */
+#carry-icon {
+    position: absolute;
+    left: 22px;
+    top: 4px;
+    width: 46px; /* the image has empty space around the can, so it looks smaller than this */
+    filter: drop-shadow(0 0 2px #000); /* outline so the yellow can shows up on the grass */
+}
+
+/* Hint text above the player's head */
+#prompt {
+    position: absolute;
+    z-index: 6;
+    transform: translate(-50%, -100%); /* center it above the point we give it */
+    white-space: nowrap;
+    padding: 4px 10px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.7);
+    color: var(--cw-yellow);
+    font-size: 14px;
+    font-weight: bold;
+    pointer-events: none;
+}
+
 /* ---------- HUD ---------- */
 #hud {
     position: absolute;

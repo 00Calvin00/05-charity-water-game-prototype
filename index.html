@@ -15,8 +15,11 @@
         <!-- The world: houses, trees and the water hole get added here by script.js -->
         <div id="world"></div>
 
-        <!-- The player character -->
-        <div id="player" class="sprite">🧍</div>
+        <!-- The player character. The water can only shows while carrying water. -->
+        <div id="player" class="sprite">🧍<img id="carry-icon" class="hidden" src="img/water-can-transparent.png" alt="Carrying water"></div>
+
+        <!-- Hint text that appears above the player (e.g. "Press ENTER to collect water") -->
+        <div id="prompt" class="hidden"></div>
 
         <!-- HUD (heads-up display): sits on top of the world -->
         <div id="hud">

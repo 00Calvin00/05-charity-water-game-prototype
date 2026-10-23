@@ -13,6 +13,9 @@ const PLAYER_HALF_SIZE = 20; // half the player's size, so they can't walk halfw
 const DRAIN_PER_SECOND = 1;  // how much village water is used up each second (out of 100)
 const LOW_WATER_LEVEL = 25;  // below this, the water bar turns red as a warning
 
+const WATER_PER_TRIP = 15;     // how much one bucket adds to the village water (out of 100)
+const INTERACT_DISTANCE = 90;  // how close (in pixels) the player must be to use something
+
 // Which direction each key moves the player.
 // Keys are lowercase so 'W' (caps lock) and 'w' both work.
 const KEY_DIRECTIONS = {
@@ -98,6 +101,8 @@ const dayCounterEl = document.getElementById('day-counter');
 const loseScreenEl = document.getElementById('lose-screen');
 const loseMessageEl = document.getElementById('lose-message');
 const tryAgainBtn = document.getElementById('try-again-btn');
+const carryIconEl = document.getElementById('carry-icon');
+const promptEl = document.getElementById('prompt');
 
 // =====================================================
 // 4. FUNCTIONS
@@ -122,6 +127,65 @@ function renderWorld(mapData) {
 function renderPlayer() {
     playerEl.style.left = `${state.player.x}px`;
     playerEl.style.top = `${state.player.y}px`;
+
+    // Show the water can only while carrying water
+    carryIconEl.classList.toggle('hidden', !state.player.carrying);
+}
+
+// Distance in pixels between two things that have x and y (like the player and a house).
+function getDistance(a, b) {
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    return Math.hypot(dx, dy); // Pythagorean theorem: √(dx² + dy²)
+}
+
+// Is the player close enough to the water hole to fill their bucket?
+function isNearWater() {
+    const waterHole = villageMap.find((item) => item.type === 'water-hole');
+    return getDistance(state.player, waterHole) < INTERACT_DISTANCE;
+}
+
+// Is the player close enough to ANY house to deliver water?
+// .some() returns true if at least one item in the array passes the test.
+function isNearVillage() {
+    return villageMap.some((item) => item.type === 'house' && getDistance(state.player, item) < INTERACT_DISTANCE);
+}
+
+// Show a hint above the player's head when they can do something.
+function updatePrompt() {
+    let message = '';
+
+    if (isNearWater() && !state.player.carrying) {
+        message = 'Press ENTER to collect water';
+    } else if (isNearWater() && state.player.carrying) {
+        message = 'Your bucket is full! Bring it to the village';
+    } else if (isNearVillage() && state.player.carrying) {
+        message = 'Press ENTER to deliver water';
+    }
+
+    promptEl.textContent = message;
+    promptEl.classList.toggle('hidden', message === '');
+
+    // Place the prompt just above the player
+    promptEl.style.left = `${state.player.x}px`;
+    promptEl.style.top = `${state.player.y - 45}px`;
+}
+
+// What happens when the player presses ENTER.
+function handleInteract() {
+    if (isNearWater() && !state.player.carrying) {
+        // Fill the bucket (you can only carry one at a time)
+        state.player.carrying = true;
+        console.log('Collected water! Bring it back to the village.');
+    } else if (isNearVillage() && state.player.carrying) {
+        // Empty the bucket into the village. Math.min keeps water at 100 or less.
+        state.water = Math.min(state.water + WATER_PER_TRIP, 100);
+        state.player.carrying = false;
+        console.log(`Delivered water! Village water is now ${Math.round(state.water)}%.`);
+    }
+
+    renderPlayer();
+    updateHUD();
 }
 
 // Update the HUD meters and day counter so they match the state.
@@ -202,6 +266,7 @@ function gameLoop() {
     movePlayer();
     drainWater();
     updateHUD();
+    updatePrompt();
     checkWinLose();
 }
 
@@ -216,6 +281,12 @@ document.addEventListener('keydown', (event) => {
     if (direction) {
         event.preventDefault(); // stop the arrow keys from scrolling the page
         heldDirections[direction] = true;
+    }
+
+    // ENTER = interact. Only while playing, and ignore the repeats the browser
+    // sends when ENTER is held down (event.repeat), so one press = one action.
+    if (event.key === 'Enter' && !event.repeat && state.phase === 'playing') {
+        handleInteract();
     }
 });
 
@@ -254,4 +325,4 @@ updateHUD();
 
 // Start the game loop
 loopId = setInterval(gameLoop, TICK_MS);
-console.log('Milestone 3: water is draining! It runs out in about a minute.');
+console.log('Milestone 4: collect water with ENTER and bring it back to a house.');
