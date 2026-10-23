@@ -10,6 +10,9 @@ const TICK_MS = 30;        // the game loop runs every 30 milliseconds (about 33
 const PLAYER_SPEED = 3;    // pixels the player moves each tick (slow on purpose: walking is a chore!)
 const PLAYER_HALF_SIZE = 20; // half the player's size, so they can't walk halfway out of the box
 
+const DRAIN_PER_SECOND = 1;  // how much village water is used up each second (out of 100)
+const LOW_WATER_LEVEL = 25;  // below this, the water bar turns red as a warning
+
 // Which direction each key moves the player.
 // Keys are lowercase so 'W' (caps lock) and 'w' both work.
 const KEY_DIRECTIONS = {
@@ -92,6 +95,9 @@ const playerEl = document.getElementById('player');
 const dayFillEl = document.getElementById('day-fill');
 const waterFillEl = document.getElementById('water-fill');
 const dayCounterEl = document.getElementById('day-counter');
+const loseScreenEl = document.getElementById('lose-screen');
+const loseMessageEl = document.getElementById('lose-message');
+const tryAgainBtn = document.getElementById('try-again-btn');
 
 // =====================================================
 // 4. FUNCTIONS
@@ -122,6 +128,9 @@ function renderPlayer() {
 function updateHUD() {
     // Water bar: width matches the water level (0–100%)
     waterFillEl.style.width = `${state.water}%`;
+
+    // Turn the bar red when water is low (toggle adds the class if true, removes it if false)
+    waterFillEl.classList.toggle('low', state.water < LOW_WATER_LEVEL);
 
     // Daylight bar: full at sunrise, empty at sunset
     const daylightLeft = 100 - (state.timeOfDay / DAY_LENGTH) * 100;
@@ -156,12 +165,44 @@ function movePlayer() {
     renderPlayer();
 }
 
+// Use up a little of the village's water. Called once per tick.
+function drainWater() {
+    // DRAIN_PER_SECOND is per second, but a tick is only TICK_MS long,
+    // so only drain that fraction of a second's worth.
+    const drainThisTick = DRAIN_PER_SECOND * (TICK_MS / 1000);
+
+    // Math.max keeps the water from going below 0
+    state.water = Math.max(state.water - drainThisTick, 0);
+}
+
+// Check if the player has lost (win check comes in milestone 5).
+function checkWinLose() {
+    if (state.water <= 0) {
+        loseGame();
+    }
+}
+
+// Stop the game and show the lose screen.
+function loseGame() {
+    state.phase = 'lost';
+    clearInterval(loopId); // stop the game loop
+
+    const dayWord = state.day === 1 ? 'day' : 'days';
+    loseMessageEl.textContent = `Your village ran out of water. You survived ${state.day} ${dayWord}.`;
+    loseScreenEl.classList.remove('hidden');
+
+    console.log('Game over: out of water.');
+}
+
 // The game loop: runs every TICK_MS milliseconds and updates everything.
 function gameLoop() {
     // Do nothing unless the game is being played
     if (state.phase !== 'playing') return;
 
     movePlayer();
+    drainWater();
+    updateHUD();
+    checkWinLose();
 }
 
 // =====================================================
@@ -197,6 +238,13 @@ window.addEventListener('blur', () => {
     heldDirections.right = false;
 });
 
+// Try Again button.
+// TEMPORARY: for now it just reloads the page. In milestone 6 this will call
+// resetGame() instead, which resets everything without a reload and skips the tutorial.
+tryAgainBtn.addEventListener('click', () => {
+    location.reload();
+});
+
 // =====================================================
 // 6. START-UP
 // =====================================================
@@ -206,4 +254,4 @@ updateHUD();
 
 // Start the game loop
 loopId = setInterval(gameLoop, TICK_MS);
-console.log('Milestone 2: use WASD or the arrow keys to move.');
+console.log('Milestone 3: water is draining! It runs out in about a minute.');

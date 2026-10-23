@@ -41,6 +41,13 @@
             <!-- How many days the village has survived -->
             <div id="day-counter" class="hud-label">Day 1</div>
         </div>
+
+        <!-- Lose screen: hidden until the water runs out -->
+        <div id="lose-screen" class="overlay hidden">
+            <h2>Out of water!</h2>
+            <p id="lose-message"></p>
+            <button id="try-again-btn">Try Again</button>
+        </div>
     </main>
 
     <script src="script.js"></script>

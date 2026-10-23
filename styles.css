@@ -166,6 +166,12 @@ h1 {
     width: 60%; /* script.js changes this */
     height: 100%;
     background: var(--cw-blue);
+    transition: background 0.3s;
+}
+
+/* script.js adds this class when the water is running low */
+#water-fill.low {
+    background: var(--cw-red);
 }
 
 /* Days survived (top-right) */
@@ -174,4 +180,51 @@ h1 {
     right: 20px;
     top: 20px;
     font-size: 20px;
+}
+
+/* ---------- Overlays (lose screen, and later start/win screens) ---------- */
+.overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 20; /* on top of everything, including the HUD */
+    background: rgba(0, 0, 0, 0.75);
+
+    /* Center the content in the middle of the game box */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 0 40px;
+}
+
+.overlay h2 {
+    font-size: 40px;
+    margin: 0 0 12px;
+}
+
+.overlay p {
+    color: #fff;
+    font-size: 18px;
+    margin: 0 0 24px;
+}
+
+.overlay button {
+    font-size: 20px;
+    font-weight: bold;
+    padding: 12px 28px;
+    border: none;
+    border-radius: 6px;
+    background: var(--cw-yellow);
+    color: #000;
+    cursor: pointer;
+}
+
+.overlay button:hover {
+    background: #ffd84a;
+}
+
+/* Hides any element. script.js adds or removes this class to show/hide things. */
+.hidden {
+    display: none;
 }
