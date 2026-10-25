@@ -1,33 +1,34 @@
-/* Charity: water Brand Colors
+/* charity: water brand colors, from the charity: water Brand Usage Guide (Feb 2020).
+   "A mix of rich and soft tones, always accompanied by our Jerry Can yellow."
 
-Primary Colors:
-- Yellow:     #FFC907
-- Blue:       #2E9DF7
-
-Secondary Colors:
-- Light Blue: #8BD1CB
-- Green:      #4FCB53
-- Orange:     #FF902A
-- Red:        #F5402C
-- Dark Green: #159A48
-- Pink:       #F16061
-
+- Jerry Can Yellow: #FFC907
+- Navy:             #003366
+- Slate Blue:       #77A8BB
+- Cream:            #FFF7E1
+- Black:            #1A1A1A
+- Peach:            #FED8C1
+- Clay:             #BF6C46
+- Gray:             #CBCCD1
 */
 
 /* Store the colors as CSS variables so we can reuse them with var(--name) */
 :root {
     --cw-yellow: #FFC907;
-    --cw-blue: #2E9DF7;
-    --cw-light-blue: #8BD1CB;
-    --cw-green: #4FCB53;
-    --cw-orange: #FF902A;
-    --cw-red: #F5402C;
-    --cw-dark-green: #159A48;
-    --cw-pink: #F16061;
+    --cw-navy: #003366;
+    --cw-slate: #77A8BB;
+    --cw-cream: #FFF7E1;
+    --cw-black: #1A1A1A;
+    --cw-peach: #FED8C1;
+    --cw-clay: #BF6C46;
+    --cw-gray: #CBCCD1;
 
-    --page-bg: #1e1e1e;
-    --grass: #a5c96a;
-    --meter-track: #d9d9d9;
+    /* What each color is used for in the game */
+    --page-bg: var(--cw-black);
+    --ground: var(--cw-peach);      /* dry earth */
+    --clean-water: var(--cw-slate);
+    --warning: var(--cw-clay);      /* low water, dirty water */
+    --mud: #8a5a3c;                 /* a darker clay for the dirty water hole */
+    --meter-track: var(--cw-gray);
 }
 
 /* ---------- Page ---------- */
@@ -70,7 +71,13 @@ h1 {
     position: relative;
     width: 800px;
     height: 600px;
-    background: var(--grass);
+    /* Dry ground: peach, with a few soft clay-colored patches for texture.
+       Each radial-gradient is one patch that fades out to transparent. */
+    background-color: var(--ground);
+    background-image:
+        radial-gradient(ellipse at 75% 80%, rgba(191, 108, 70, 0.18), transparent 45%),
+        radial-gradient(ellipse at 15% 25%, rgba(191, 108, 70, 0.12), transparent 40%),
+        radial-gradient(ellipse at 60% 25%, rgba(191, 108, 70, 0.10), transparent 35%);
     border-radius: 8px;
     overflow: hidden; /* hide anything that goes outside the box */
 
@@ -85,6 +92,24 @@ h1 {
 #world {
     position: absolute;
     inset: 0; /* fill the whole game box */
+}
+
+/* ---------- Intro: gray and faded until Start is clicked ---------- */
+#world,
+#player,
+#hud {
+    /* Fade smoothly when the "not-started" class is removed */
+    transition: filter 1.5s, opacity 1.5s;
+}
+
+#game.not-started #world {
+    filter: grayscale(1) opacity(0.5); /* no color, half see-through */
+}
+
+/* The player and HUD appear only once the game starts */
+#game.not-started #player,
+#game.not-started #hud {
+    opacity: 0;
 }
 
 /* ---------- Sprites (houses, trees, player) ---------- */
@@ -128,13 +153,13 @@ h1 {
 
 /* ...but have different colors */
 .water-hole {
-    background: var(--cw-blue);
-    border: 4px solid var(--cw-light-blue);
+    background: var(--clean-water);
+    border: 4px solid var(--cw-navy);
 }
 
 .dirty-hole {
-    background: #7a5232; /* muddy brown */
-    border: 4px solid #a8794f;
+    background: var(--mud);
+    border: 4px solid var(--cw-clay);
 }
 
 #player {
@@ -160,7 +185,7 @@ h1 {
     top: 0;
     width: 12px;
     height: 12px;
-    background: #7a5232;
+    background: var(--mud);
     border: 2px solid #000;
     border-radius: 0 50% 50% 50%; /* rounded on 3 corners = a drop shape */
     transform: rotate(45deg);
@@ -194,7 +219,7 @@ h1 {
     position: absolute;
     inset: 0;
     z-index: 8; /* above the world and player, below the HUD */
-    background: #0b1a3a;
+    background: var(--cw-navy);
     opacity: 0; /* invisible during the day */
     transition: opacity 1s; /* fade in and out instead of snapping */
     pointer-events: none;
@@ -217,10 +242,31 @@ h1 {
     font-size: calc(16px * var(--text-boost, 1));
     padding: 8px 14px;
     border-radius: 6px;
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(26, 26, 26, 0.85);
     color: var(--cw-yellow);
     font-weight: bold;
     text-align: center;
+    white-space: pre-line; /* lets a "\n" in the message start a new line */
+}
+
+/* During the tutorial the message sits in the middle, away from the HUD it's pointing at */
+#message-box.centered {
+    top: 50%;
+    transform: translate(-50%, -50%);
+    max-width: min(calc(460px * var(--text-boost, 1)), 70%);
+}
+
+/* Tutorial: a pulsing yellow outline around the thing being explained */
+.highlight {
+    outline: 4px solid var(--cw-yellow);
+    outline-offset: 6px;
+    border-radius: 8px;
+    animation: highlight-pulse 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes highlight-pulse {
+    from { outline-color: var(--cw-yellow); }
+    to   { outline-color: transparent; }
 }
 
 /* ---------- HUD ---------- */
@@ -234,9 +280,8 @@ h1 {
 .hud-label {
     font-weight: bold;
     font-size: calc(14px * var(--text-boost, 1));
-    color: var(--cw-yellow);
-    /* Dark outline so yellow text is readable on the grass */
-    text-shadow: 0 0 3px #000, 0 0 3px #000;
+    /* Dark text on the light peach ground (yellow on peach would be hard to read) */
+    color: var(--cw-black);
 }
 
 .hud-icon {
@@ -259,7 +304,7 @@ h1 {
     width: 22px;
     height: 260px;
     background: var(--meter-track);
-    border: 2px solid #000;
+    border: 2px solid var(--cw-black);
 }
 
 #day-fill {
@@ -281,19 +326,19 @@ h1 {
     width: 240px;
     height: 24px;
     background: var(--meter-track);
-    border: 2px solid #000;
+    border: 2px solid var(--cw-black);
 }
 
 #water-fill {
     width: 60%; /* script.js changes this */
     height: 100%;
-    background: var(--cw-blue);
+    background: var(--cw-navy);
     transition: background 0.3s;
 }
 
 /* script.js adds this class when the water is running low */
 #water-fill.low {
-    background: var(--cw-red);
+    background: var(--warning);
 }
 
 /* script.js adds this class when dirty water is delivered: shake and flash red */
@@ -302,11 +347,11 @@ h1 {
 }
 
 @keyframes hurt {
-    0%, 100% { transform: translateX(0);    border-color: #000; }
-    20%      { transform: translateX(-6px); border-color: var(--cw-red); }
-    40%      { transform: translateX(6px);  border-color: var(--cw-red); }
-    60%      { transform: translateX(-4px); border-color: var(--cw-red); }
-    80%      { transform: translateX(4px);  border-color: var(--cw-red); }
+    0%, 100% { transform: translateX(0);    border-color: var(--cw-black); }
+    20%      { transform: translateX(-6px); border-color: var(--warning); }
+    40%      { transform: translateX(6px);  border-color: var(--warning); }
+    60%      { transform: translateX(-4px); border-color: var(--warning); }
+    80%      { transform: translateX(4px);  border-color: var(--warning); }
 }
 
 /* Celebration stars (script.js creates these around the water bar) */
@@ -349,35 +394,83 @@ h1 {
     100% { transform: scale(1); }
 }
 
-/* ---------- Overlays (lose screen, and later start/win screens) ---------- */
+/* ---------- Overlays (start, lose and win screens) ---------- */
+/* Text sizes use min() so the boosted text on phones can't grow so big it no longer fits */
 .overlay {
     position: absolute;
     inset: 0;
     z-index: 20; /* on top of everything, including the HUD */
-    background: rgba(0, 0, 0, 0.75);
+    background: rgba(26, 26, 26, 0.85);
 
-    /* Center the content in the middle of the game box */
+    /* Stack the content in a column, centered left-to-right */
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
     text-align: center;
-    padding: 0 40px;
+    padding: 20px 40px;
+
+    /* If the content is ever taller than the game box, let it scroll instead of being cut off */
+    overflow-y: auto;
+}
+
+/* Center the content top-to-bottom: equal "auto" margins above the first item and below the last.
+   (Unlike justify-content: center, this never pushes the top out of reach when content overflows.) */
+.overlay > :first-child {
+    margin-top: auto;
+}
+
+.overlay > :last-child {
+    margin-bottom: auto;
+}
+
+/* The start screen is lighter so you can see the faded village behind it */
+#start-screen {
+    background: rgba(26, 26, 26, 0.55);
 }
 
 .overlay h2 {
-    font-size: calc(40px * var(--text-boost, 1));
+    font-size: min(calc(40px * var(--text-boost, 1)), 54px);
     margin: 0 0 12px;
 }
 
 .overlay p {
     color: #fff;
-    font-size: calc(18px * var(--text-boost, 1));
-    margin: 0 0 24px;
+    font-size: min(calc(18px * var(--text-boost, 1)), 30px);
+    margin: 0 0 16px;
+}
+
+/* The real-world fact on the win and lose screens */
+.overlay p.fact {
+    color: var(--cw-yellow);
+    font-size: min(calc(15px * var(--text-boost, 1)), 24px);
+}
+
+/* "Learn more" link to charity: water's website */
+.learn-more {
+    color: var(--cw-yellow);
+    font-weight: bold;
+    font-size: min(calc(16px * var(--text-boost, 1)), 26px);
+    text-underline-offset: 3px;
+    margin-bottom: 20px;
+}
+
+/* The logo sits on a plain white card (brand guide: white or black backgrounds only).
+   Only the width is set; height: auto keeps the logo's shape so it's never stretched or squished. */
+.logo-card {
+    background: #fff;
+    padding: 10px 18px;
+    border-radius: 6px;
+    margin-bottom: 16px;
+}
+
+.logo-card img {
+    display: block;
+    width: min(calc(200px * var(--text-boost, 1)), 340px);
+    height: auto;
 }
 
 .overlay button {
-    font-size: calc(20px * var(--text-boost, 1));
+    font-size: min(calc(20px * var(--text-boost, 1)), 30px);
     font-weight: bold;
     padding: 12px 28px;
     border: none;
@@ -419,8 +512,29 @@ h1 {
 
 /* Smaller "how to play" text on the start screen */
 .overlay p.controls-help {
-    font-size: calc(14px * var(--text-boost, 1));
+    font-size: min(calc(14px * var(--text-boost, 1)), 24px);
     color: var(--cw-yellow);
+}
+
+/* ---------- Confetti (win screen) ---------- */
+/* script.js creates about 80 of these with random positions, colors, speeds and drift */
+.confetti {
+    position: absolute;
+    top: -20px; /* start just above the game box */
+    width: 10px;
+    height: 16px;
+    z-index: 25; /* above the win screen */
+    pointer-events: none; /* clicks go through to the buttons underneath */
+    animation-name: confetti-fall;
+    animation-timing-function: linear;
+    animation-fill-mode: forwards;
+}
+
+/* Fall to below the bottom of the game, drifting sideways and spinning.
+   --drift is set by script.js so each piece drifts a different amount. */
+@keyframes confetti-fall {
+    from { transform: translate(0, 0) rotate(0deg); }
+    to   { transform: translate(var(--drift, 0), 660px) rotate(720deg); }
 }
 
 /* ---------- Small screens ---------- */

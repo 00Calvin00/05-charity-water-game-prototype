@@ -49,6 +49,50 @@ const ACTION_HINT = IS_TOUCH_SCREEN
     ? '<span class="hint-action">Tap here</span>'
     : 'Press <span class="hint-action">ENTER</span>';
 
+// The brand guide says "charity: water" must never be split onto two lines.
+//   is a "non-breaking space", so the browser won't wrap between the two words.
+const BRAND_NAME = 'charity: water';
+
+// Tutorial messages, shown one at a time the first time someone plays.
+// highlight is a CSS selector for the thing the message talks about (or null for nothing).
+const CONTINUE_HINT = IS_TOUCH_SCREEN ? '(tap to continue)' : '(press ENTER or click to continue)';
+const TUTORIAL_STEPS = [
+    {
+        text: "Your village needs water, and it's your job to fetch it. Keep the village's water level up for as long as you can.",
+        highlight: null
+    },
+    {
+        text: "This is the daylight bar. When the sun sets, you head home. You can't collect water in the dark.",
+        highlight: '#day-tracker'
+    },
+    {
+        text: "This is your village's water level. It drops all day, so don't let it reach empty!",
+        highlight: '#water-tracker'
+    },
+    {
+        text: 'The muddy water hole is close, but its water makes people sick. The clean water is farther away.',
+        highlight: '.water-hole, .dirty-hole'
+    },
+    {
+        text: IS_TOUCH_SCREEN
+            ? 'Tap where you want to walk. Tap the hint above your head to collect or deliver water.'
+            : 'Move with WASD or the arrow keys, or click where you want to walk. Press ENTER to collect and deliver water.',
+        highlight: null
+    }
+];
+
+// Short sounds, made with the Web Audio API (no sound files needed).
+// Each note is [frequency in Hz, when it starts in seconds, how long it lasts in seconds].
+// Higher frequency = higher pitch.
+const SOUNDS = {
+    clean: [[659, 0, 0.15], [988, 0.1, 0.3]],                          // happy "ding-ding"
+    dirty: [[220, 0, 0.25], [175, 0.15, 0.35]],                        // low "bonk-bonk"
+    win: [[523, 0, 0.2], [659, 0.15, 0.2], [784, 0.3, 0.2], [1047, 0.45, 0.6]] // rising fanfare
+};
+
+// Brand colors for the confetti
+const CONFETTI_COLORS = ['#FFC907', '#003366', '#77A8BB', '#FED8C1', '#BF6C46', '#FFF7E1'];
+
 // Which emoji to show for each type of map object.
 // The water hole is drawn with CSS, so it has no emoji.
 const SPRITES = {
@@ -67,7 +111,7 @@ const SPRITES = {
 function createStartingState() {
     return {
         // What the game is doing right now:
-        // 'start' (waiting for Start button), 'playing', 'night', 'won' or 'lost'.
+        // 'start' (waiting for Start button), 'tutorial', 'playing', 'night', 'won' or 'lost'.
         // Only 'playing' lets the player move.
         phase: 'start',
 
@@ -107,6 +151,17 @@ let messageTimeoutId = null;
 
 // The hint currently showing above the player (so we only rebuild it when it changes)
 let currentPromptMessage = '';
+
+// Has the player finished the tutorial? This lives OUTSIDE the state object on purpose:
+// resetGame() replaces the state, but we want the tutorial to stay skipped on replays.
+let tutorialSeen = false;
+
+// Which tutorial message is showing (an index into TUTORIAL_STEPS)
+let tutorialStep = 0;
+
+// The Web Audio "sound system". Browsers only allow sound after the player clicks
+// something, so it's created when Start is clicked (see initAudio).
+let audioContext = null;
 
 // The village screen. x and y are the CENTER of each object, in pixels,
 // measured from the top-left corner of the 800 x 600 game box.
@@ -153,6 +208,7 @@ const waterFillEl = document.getElementById('water-fill');
 const dayCounterEl = document.getElementById('day-counter');
 const loseScreenEl = document.getElementById('lose-screen');
 const loseMessageEl = document.getElementById('lose-message');
+const winMessageEl = document.getElementById('win-message');
 const tryAgainBtn = document.getElementById('try-again-btn');
 const carryIconEl = document.getElementById('carry-icon');
 const promptEl = document.getElementById('prompt');
@@ -274,6 +330,7 @@ function handleInteract() {
         state.litersDelivered += LITERS_PER_TRIP;
         state.player.carrying = null;
         showStars(waterTrackerEl);
+        playSound(SOUNDS.clean);
         console.log(`Delivered clean water! Village water is now ${Math.round(state.water)}%.`);
     } else if (isNearVillage() && state.player.carrying === 'dirty') {
         // Dirty water: people get sick, so the village LOSES water caring for them.
@@ -281,6 +338,7 @@ function handleInteract() {
         state.water = Math.max(state.water - DIRTY_WATER_PENALTY, 0);
         state.player.carrying = null;
         flashWaterBar();
+        playSound(SOUNDS.dirty);
         showMessage('That water was dirty and people got sick. The clean water is farther away, but it keeps everyone healthy.', MESSAGE_TIME_MS);
         console.log(`Delivered dirty water. Village water dropped to ${Math.round(state.water)}%.`);
     }
@@ -422,9 +480,107 @@ function showMessage(text, hideAfterMs) {
 
     messageBoxEl.textContent = text;
     messageBoxEl.classList.remove('hidden');
+    messageBoxEl.classList.remove('centered'); // only tutorial messages are centered
 
     if (hideAfterMs) {
         messageTimeoutId = setTimeout(hideMessage, hideAfterMs);
+    }
+}
+
+// ---------- Tutorial ----------
+
+// Show the current tutorial message and highlight what it's talking about.
+function showTutorialStep() {
+    const step = TUTORIAL_STEPS[tutorialStep];
+
+    clearHighlights();
+    showMessage(`${step.text}\n${CONTINUE_HINT}`);
+    messageBoxEl.classList.add('centered');
+
+    if (step.highlight) {
+        document.querySelectorAll(step.highlight).forEach((el) => el.classList.add('highlight'));
+    }
+}
+
+// Go to the next tutorial message, or start playing after the last one.
+function nextTutorialStep() {
+    tutorialStep += 1;
+
+    if (tutorialStep < TUTORIAL_STEPS.length) {
+        showTutorialStep();
+    } else {
+        finishTutorial();
+    }
+}
+
+function finishTutorial() {
+    clearHighlights();
+    tutorialSeen = true; // don't show it again, even after Reset
+    state.phase = 'playing';
+    showMessage('Now go get some water!', 2000);
+}
+
+// Remove the pulsing tutorial outline from everything
+function clearHighlights() {
+    document.querySelectorAll('.highlight').forEach((el) => el.classList.remove('highlight'));
+}
+
+// ---------- Sound ----------
+
+// Create the sound system. Must happen after a click, or browsers block it.
+function initAudio() {
+    if (!audioContext) {
+        audioContext = new AudioContext();
+    }
+    audioContext.resume();
+}
+
+// Play a list of notes (see SOUNDS at the top of the file).
+function playSound(notes) {
+    if (!audioContext) return; // no sound until the player has clicked Start
+
+    const now = audioContext.currentTime;
+
+    notes.forEach(([frequency, start, length]) => {
+        // An oscillator makes a tone; a gain node controls its volume
+        const oscillator = audioContext.createOscillator();
+        const volume = audioContext.createGain();
+
+        oscillator.type = 'triangle'; // a soft, flute-like tone
+        oscillator.frequency.value = frequency;
+
+        // Fade in very quickly, then fade out, so the note doesn't "click"
+        volume.gain.setValueAtTime(0.0001, now + start);
+        volume.gain.exponentialRampToValueAtTime(0.2, now + start + 0.02);
+        volume.gain.exponentialRampToValueAtTime(0.0001, now + start + length);
+
+        // Connect: oscillator -> volume -> speakers
+        oscillator.connect(volume);
+        volume.connect(audioContext.destination);
+
+        oscillator.start(now + start);
+        oscillator.stop(now + start + length + 0.05);
+    });
+}
+
+// ---------- Confetti ----------
+
+// Rain brand-colored confetti over the game (when the player wins).
+function launchConfetti() {
+    for (let i = 0; i < 80; i++) {
+        const piece = document.createElement('div');
+        piece.className = 'confetti';
+
+        // Random everything, so each piece looks and moves a little differently
+        piece.style.left = `${Math.random() * 100}%`;
+        piece.style.background = CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)];
+        piece.style.animationDuration = `${2.5 + Math.random() * 2}s`; // 2.5 to 4.5 seconds to fall
+        piece.style.animationDelay = `${Math.random() * 1.5}s`;        // don't all start at once
+        piece.style.setProperty('--drift', `${Math.random() * 160 - 80}px`); // sideways: -80 to 80px
+
+        // Remove each piece when it has finished falling
+        piece.addEventListener('animationend', () => piece.remove());
+        gameEl.appendChild(piece);
     }
 }
 
@@ -525,14 +681,17 @@ function winGame() {
     // .concat() joins the two arrays so the pump is drawn along with the houses and trees.
     state.wells.push({ type: 'pump', x: 120, y: 390 });
     renderWorld(villageMap.concat(state.wells));
-    showMessage('Help has arrived! charity: water built a water pump for your village!');
+    showMessage(`Help has arrived! ${BRAND_NAME} built a water pump for your village!`);
+    playSound(SOUNDS.win);
     console.log('You win! charity: water built a pump.');
 
     // Give the player 3 seconds to see the new pump, then show the win screen.
     // The win screen stays up until the player clicks Play Again or Reset.
     winTimeoutId = setTimeout(() => {
         hideMessage();
+        winMessageEl.textContent = `You carried ${state.litersDelivered} liters of clean water home over ${state.day} days. With a pump close by, nobody has to make that walk anymore. That time can go to school, work and family instead.`;
         winScreenEl.classList.remove('hidden');
+        launchConfetti();
     }, 3000);
 }
 
@@ -549,7 +708,8 @@ function loseGame() {
     clearInterval(loopId); // stop the game loop
 
     const dayWord = state.day === 1 ? 'day' : 'days';
-    loseMessageEl.textContent = `Your village ran out of water. You survived ${state.day} ${dayWord} and carried ${state.litersDelivered} liters of clean water home.`;
+    loseMessageEl.textContent = `Your village ran out of water after ${state.day} ${dayWord}. You carried ${state.litersDelivered} liters of clean water home.`;
+    hideMessage(); // don't leave an old message peeking out behind the lose screen
     loseScreenEl.classList.remove('hidden');
 
     console.log('Game over: out of water.');
@@ -584,7 +744,8 @@ function resetGame() {
     nightOverlayEl.classList.remove('active');
     hideMessage();
     waterBarEl.classList.remove('hurt');
-    document.querySelectorAll('.star').forEach((star) => star.remove());
+    document.querySelectorAll('.star, .confetti').forEach((el) => el.remove());
+    clearHighlights();
 
     // Redraw everything (this also removes the pump if the last game was won)
     renderWorld(villageMap.concat(state.wells));
@@ -594,13 +755,24 @@ function resetGame() {
     dayCounterEl.textContent = `Day ${state.day}`;
 }
 
-// Start playing: hide the start screen and start the game loop.
+// Start playing: hide the start screen, bring the world to life and start the game loop.
 function startGame() {
     startScreenEl.classList.add('hidden');
-    state.phase = 'playing';
+    gameEl.classList.remove('not-started'); // the world fades from gray into full color
+    initAudio(); // Start was a click, so the browser now allows sound
 
     clearInterval(loopId); // just in case a loop is already running
     loopId = setInterval(gameLoop, TICK_MS);
+
+    // First game: show the tutorial (the loop waits while phase is 'tutorial').
+    // After that (Try Again, Play Again, Reset): jump straight in.
+    if (!tutorialSeen) {
+        state.phase = 'tutorial';
+        tutorialStep = 0;
+        showTutorialStep();
+    } else {
+        state.phase = 'playing';
+    }
     console.log('Game started!');
 }
 
@@ -633,6 +805,14 @@ function gameLoop() {
 document.addEventListener('keydown', (event) => {
     // On the win or lose screen, keys do nothing. Only the buttons restart the game.
     if (state.phase === 'won' || state.phase === 'lost') return;
+
+    // During the tutorial, ENTER goes to the next message (and does nothing else)
+    if (state.phase === 'tutorial') {
+        if (event.key === 'Enter' && !event.repeat) {
+            nextTutorialStep();
+        }
+        return;
+    }
 
     const direction = KEY_DIRECTIONS[event.key.toLowerCase()];
 
@@ -680,7 +860,7 @@ resetBtn.addEventListener('click', (event) => {
 });
 
 // Try Again button (lose screen): reset and jump straight back into the game.
-// The start screen isn't shown again (and in milestone 9, neither is the tutorial).
+// The start screen and the tutorial are not shown again.
 tryAgainBtn.addEventListener('click', (event) => {
     event.currentTarget.blur();
     resetGame();
@@ -690,6 +870,12 @@ tryAgainBtn.addEventListener('click', (event) => {
 // Tap or click anywhere in the game to walk there.
 // 'pointerdown' works for mouse clicks AND finger taps.
 gameEl.addEventListener('pointerdown', (event) => {
+    // During the tutorial, a tap/click anywhere goes to the next message
+    if (state.phase === 'tutorial') {
+        nextTutorialStep();
+        return;
+    }
+
     if (state.phase !== 'playing') return;
 
     // Taps on buttons (like the hint above the player) shouldn't move the player
@@ -745,4 +931,4 @@ playAgainBtn.addEventListener('click', (event) => {
 // so the game waits until the Start button is clicked.
 fitGameToScreen(); // size the game for this screen
 resetGame();
-console.log(`Milestone 8: click/tap to walk! Click Start, survive ${DAYS_TO_WIN} days for charity: water to arrive.`);
+console.log(`Milestone 9: Click Start, survive ${DAYS_TO_WIN} days for charity: water to arrive.`);
