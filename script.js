@@ -19,8 +19,11 @@ const DRAIN_PER_SECOND = 1;        // how much village water is used up each sec
 const NIGHT_DRAIN_PER_SECOND = 0.5; // water still gets used at night, just less
 const LOW_WATER_LEVEL = 25;  // below this, the water bar turns red as a warning
 
-const WATER_PER_TRIP = 15;     // how much one bucket adds to the village water (out of 100)
-const INTERACT_DISTANCE = 90;  // how close (in pixels) the player must be to use something
+const WATER_PER_TRIP = 15;       // how much one bucket of CLEAN water adds to the village water (out of 100)
+const DIRTY_WATER_PENALTY = 10;  // how much one bucket of DIRTY water takes away (people get sick)
+const LITERS_PER_TRIP = 20;      // a jerry can holds about 20 liters
+const INTERACT_DISTANCE = 90;    // how close (in pixels) the player must be to use something
+const MESSAGE_TIME_MS = 3500;    // how long short messages stay on screen
 
 // Which direction each key moves the player.
 // Keys are lowercase so 'W' (caps lock) and 'w' both work.
@@ -41,6 +44,7 @@ const SPRITES = {
     house: '🛖',
     tree: '🌳',
     'water-hole': '',
+    'dirty-hole': '', // also drawn with CSS
     pump: '' // drawn with an image in styles.css
 };
 
@@ -60,10 +64,12 @@ function createStartingState() {
         timeOfDay: 0,  // seconds since sunrise
         nightTime: 0,  // seconds since nightfall (only counts during the night)
         day: 1,        // days survived
+        litersDelivered: 0, // total clean water brought home (shown on the end screens)
 
         // The player is stored as an "entity" object.
         // Later, villagers will use this same shape.
-        player: { id: 'player', x: HOME_POSITION.x, y: HOME_POSITION.y, carrying: false, task: null },
+        // carrying is null (empty bucket), 'clean' or 'dirty'.
+        player: { id: 'player', x: HOME_POSITION.x, y: HOME_POSITION.y, carrying: null, task: null },
 
         // Wells and pumps built in the village. They're drawn on the map with the houses and trees.
         // Empty at the start; charity: water's pump is added when you win.
@@ -83,6 +89,9 @@ let loopId = null;
 
 // The ID of the timer that shows the win screen, so Reset can cancel it with clearTimeout()
 let winTimeoutId = null;
+
+// The ID of the timer that hides a short message (see showMessage)
+let messageTimeoutId = null;
 
 // The village screen. x and y are the CENTER of each object, in pixels,
 // measured from the top-left corner of the 800 x 600 game box.
@@ -109,8 +118,11 @@ const villageMap = [
     { type: 'tree', x: 470, y: 370 },
     { type: 'tree', x: 550, y: 420 },
 
-    // Water source (bottom-right)
-    { type: 'water-hole', x: 660, y: 470 }
+    // Water sources:
+    // the CLEAN water hole is far away in the bottom-right corner (a long walk)...
+    { type: 'water-hole', x: 725, y: 535 },
+    // ...and the DIRTY one is temptingly close to the village (the obstacle!)
+    { type: 'dirty-hole', x: 430, y: 470 }
 ];
 
 // =====================================================
@@ -133,6 +145,9 @@ const playAgainBtn = document.getElementById('play-again-btn');
 const startScreenEl = document.getElementById('start-screen');
 const startBtn = document.getElementById('start-btn');
 const resetBtn = document.getElementById('reset-btn');
+const waterTrackerEl = document.getElementById('water-tracker');
+const waterBarEl = document.getElementById('water-bar');
+const waterPercentEl = document.getElementById('water-percent');
 
 // =====================================================
 // 4. FUNCTIONS
@@ -159,7 +174,11 @@ function renderPlayer() {
     playerEl.style.top = `${state.player.y}px`;
 
     // Show the water can only while carrying water
+    // (!null is true, so the can is hidden when the bucket is empty)
     carryIconEl.classList.toggle('hidden', !state.player.carrying);
+
+    // Show a little brown drop next to the can when the water is dirty
+    playerEl.classList.toggle('carrying-dirty', state.player.carrying === 'dirty');
 }
 
 // Distance in pixels between two things that have x and y (like the player and a house).
@@ -169,10 +188,13 @@ function getDistance(a, b) {
     return Math.hypot(dx, dy); // Pythagorean theorem: √(dx² + dy²)
 }
 
-// Is the player close enough to the water hole to fill their bucket?
-function isNearWater() {
-    const waterHole = villageMap.find((item) => item.type === 'water-hole');
-    return getDistance(state.player, waterHole) < INTERACT_DISTANCE;
+// Find the water source (clean or dirty) the player is standing next to.
+// Returns that map item, or undefined if they aren't near any water.
+function getNearbyWaterSource() {
+    return villageMap.find((item) =>
+        (item.type === 'water-hole' || item.type === 'dirty-hole') &&
+        getDistance(state.player, item) < INTERACT_DISTANCE
+    );
 }
 
 // Is the player close enough to ANY house to deliver water?
@@ -190,13 +212,15 @@ function updatePrompt() {
     }
 
     let message = '';
+    const source = getNearbyWaterSource();
 
-    if (isNearWater() && !state.player.carrying) {
-        message = 'Press ENTER to collect water';
-    } else if (isNearWater() && state.player.carrying) {
+    if (source && !state.player.carrying) {
+        const kind = source.type === 'dirty-hole' ? 'dirty' : 'clean';
+        message = `Press ENTER to collect ${kind} water`;
+    } else if (source && state.player.carrying) {
         message = 'Your bucket is full! Bring it to the village';
     } else if (isNearVillage() && state.player.carrying) {
-        message = 'Press ENTER to deliver water';
+        message = `Press ENTER to deliver ${state.player.carrying} water`;
     }
 
     promptEl.textContent = message;
@@ -209,15 +233,28 @@ function updatePrompt() {
 
 // What happens when the player presses ENTER.
 function handleInteract() {
-    if (isNearWater() && !state.player.carrying) {
-        // Fill the bucket (you can only carry one at a time)
-        state.player.carrying = true;
-        console.log('Collected water! Bring it back to the village.');
-    } else if (isNearVillage() && state.player.carrying) {
-        // Empty the bucket into the village. Math.min keeps water at 100 or less.
+    const source = getNearbyWaterSource();
+
+    if (source && !state.player.carrying) {
+        // Fill the bucket (you can only carry one at a time).
+        // Remember which kind of water is in it.
+        state.player.carrying = source.type === 'dirty-hole' ? 'dirty' : 'clean';
+        console.log(`Collected ${state.player.carrying} water! Bring it back to the village.`);
+    } else if (isNearVillage() && state.player.carrying === 'clean') {
+        // Clean water: fill up the village. Math.min keeps water at 100 or less.
         state.water = Math.min(state.water + WATER_PER_TRIP, 100);
-        state.player.carrying = false;
-        console.log(`Delivered water! Village water is now ${Math.round(state.water)}%.`);
+        state.litersDelivered += LITERS_PER_TRIP;
+        state.player.carrying = null;
+        showStars(waterTrackerEl);
+        console.log(`Delivered clean water! Village water is now ${Math.round(state.water)}%.`);
+    } else if (isNearVillage() && state.player.carrying === 'dirty') {
+        // Dirty water: people get sick, so the village LOSES water caring for them.
+        // Math.max keeps water at 0 or more.
+        state.water = Math.max(state.water - DIRTY_WATER_PENALTY, 0);
+        state.player.carrying = null;
+        flashWaterBar();
+        showMessage('That water was dirty and people got sick. The clean water is farther away, but it keeps everyone healthy.', MESSAGE_TIME_MS);
+        console.log(`Delivered dirty water. Village water dropped to ${Math.round(state.water)}%.`);
     }
 
     renderPlayer();
@@ -232,6 +269,9 @@ function updateHUD() {
 
     // Turn the bar red when water is low (toggle adds the class if true, removes it if false)
     waterFillEl.classList.toggle('low', state.water < LOW_WATER_LEVEL);
+
+    // The score: water level as a whole number, e.g. "62%"
+    waterPercentEl.textContent = `${Math.round(state.water)}%`;
 
     // Daylight bar: full at sunrise, empty at sunset
     const daylightLeft = 100 - (state.timeOfDay / DAY_LENGTH) * 100;
@@ -285,9 +325,45 @@ function drainWater(ratePerSecond) {
 }
 
 // Show a message at the top of the game box.
-function showMessage(text) {
+// If hideAfterMs is given, the message hides itself after that many milliseconds.
+// Otherwise it stays until hideMessage() is called.
+function showMessage(text, hideAfterMs) {
+    // A new message replaces the old one, so cancel the old one's hide timer
+    // (otherwise it could hide this new message too early)
+    clearTimeout(messageTimeoutId);
+
     messageBoxEl.textContent = text;
     messageBoxEl.classList.remove('hidden');
+
+    if (hideAfterMs) {
+        messageTimeoutId = setTimeout(hideMessage, hideAfterMs);
+    }
+}
+
+// Make little stars twinkle around an element (like the water bar) to celebrate.
+function showStars(targetEl) {
+    for (let i = 0; i < 6; i++) {
+        const star = document.createElement('span');
+        star.className = 'star';
+        star.textContent = '★';
+
+        // Random spot around the target: a bit outside its edges.
+        // Percentages are relative to the target's size.
+        star.style.left = `${Math.random() * 110 - 5}%`;
+        star.style.top = `${Math.random() * 80 - 30}%`;
+
+        // Start each star a little later than the last, so they twinkle one after another
+        star.style.animationDelay = `${i * 0.08}s`;
+
+        // When its animation finishes, remove the star so they don't pile up
+        star.addEventListener('animationend', () => star.remove());
+        targetEl.appendChild(star);
+    }
+}
+
+// Shake the water bar and flash it red (when dirty water is delivered).
+function flashWaterBar() {
+    waterBarEl.classList.add('hurt');
 }
 
 function hideMessage() {
@@ -314,7 +390,7 @@ function startNight() {
     state.player.y = HOME_POSITION.y;
 
     // Any water still in the bucket spills on the way home (it's a hard life!)
-    state.player.carrying = false;
+    state.player.carrying = null;
     renderPlayer();
 
     nightOverlayEl.classList.add('active');
@@ -384,7 +460,7 @@ function loseGame() {
     clearInterval(loopId); // stop the game loop
 
     const dayWord = state.day === 1 ? 'day' : 'days';
-    loseMessageEl.textContent = `Your village ran out of water. You survived ${state.day} ${dayWord}.`;
+    loseMessageEl.textContent = `Your village ran out of water. You survived ${state.day} ${dayWord} and carried ${state.litersDelivered} liters of clean water home.`;
     loseScreenEl.classList.remove('hidden');
 
     console.log('Game over: out of water.');
@@ -407,6 +483,7 @@ function resetGame() {
     // If Reset is clicked during the "Help has arrived!" message,
     // cancel the timer so the win screen doesn't pop up over the new game
     clearTimeout(winTimeoutId);
+    clearTimeout(messageTimeoutId);
 
     // Fresh copy of all the starting values
     state = createStartingState();
@@ -417,6 +494,8 @@ function resetGame() {
     winScreenEl.classList.add('hidden');
     nightOverlayEl.classList.remove('active');
     hideMessage();
+    waterBarEl.classList.remove('hurt');
+    document.querySelectorAll('.star').forEach((star) => star.remove());
 
     // Redraw everything (this also removes the pump if the last game was won)
     renderWorld(villageMap.concat(state.wells));
@@ -525,6 +604,11 @@ dayCounterEl.addEventListener('animationend', () => {
     dayCounterEl.classList.remove('pop');
 });
 
+// Same idea for the water bar's red "hurt" flash
+waterBarEl.addEventListener('animationend', () => {
+    waterBarEl.classList.remove('hurt');
+});
+
 // Play Again button (win screen): same as Try Again
 playAgainBtn.addEventListener('click', (event) => {
     event.currentTarget.blur();
@@ -538,4 +622,4 @@ playAgainBtn.addEventListener('click', (event) => {
 // Draw the world and HUD. The start screen is showing (it's not hidden in index.html),
 // so the game waits until the Start button is clicked.
 resetGame();
-console.log(`Milestone 6: click Start, survive ${DAYS_TO_WIN} days for charity: water to arrive.`);
+console.log(`Milestone 7: avoid the dirty water! Click Start, survive ${DAYS_TO_WIN} days for charity: water to arrive.`);

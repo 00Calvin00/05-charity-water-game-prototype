@@ -94,14 +94,25 @@ h1 {
     background: url('img/water-pump.png') center / contain no-repeat;
 }
 
-/* The water hole is drawn with CSS instead of an emoji */
-.water-hole {
+/* Water holes are drawn with CSS instead of an emoji.
+   Both kinds share the same blob shape... */
+.water-hole,
+.dirty-hole {
     width: 130px;
     height: 85px;
-    background: var(--cw-blue);
-    border: 4px solid var(--cw-light-blue);
     /* Uneven corner values make a "blob" shape instead of a perfect oval */
     border-radius: 55% 45% 60% 40% / 50% 60% 40% 50%;
+}
+
+/* ...but have different colors */
+.water-hole {
+    background: var(--cw-blue);
+    border: 4px solid var(--cw-light-blue);
+}
+
+.dirty-hole {
+    background: #7a5232; /* muddy brown */
+    border: 4px solid #a8794f;
 }
 
 #player {
@@ -116,6 +127,21 @@ h1 {
     top: 4px;
     width: 46px; /* the image has empty space around the can, so it looks smaller than this */
     filter: drop-shadow(0 0 2px #000); /* outline so the yellow can shows up on the grass */
+}
+
+/* A small brown drop next to the can when carrying dirty water.
+   ::after adds an extra "pretend" element without changing the HTML. */
+#player.carrying-dirty::after {
+    content: '';
+    position: absolute;
+    left: 56px;
+    top: 0;
+    width: 12px;
+    height: 12px;
+    background: #7a5232;
+    border: 2px solid #000;
+    border-radius: 0 50% 50% 50%; /* rounded on 3 corners = a drop shape */
+    transform: rotate(45deg);
 }
 
 /* Hint text above the player's head */
@@ -236,6 +262,37 @@ h1 {
 /* script.js adds this class when the water is running low */
 #water-fill.low {
     background: var(--cw-red);
+}
+
+/* script.js adds this class when dirty water is delivered: shake and flash red */
+#water-bar.hurt {
+    animation: hurt 0.6s ease-in-out;
+}
+
+@keyframes hurt {
+    0%, 100% { transform: translateX(0);    border-color: #000; }
+    20%      { transform: translateX(-6px); border-color: var(--cw-red); }
+    40%      { transform: translateX(6px);  border-color: var(--cw-red); }
+    60%      { transform: translateX(-4px); border-color: var(--cw-red); }
+    80%      { transform: translateX(4px);  border-color: var(--cw-red); }
+}
+
+/* Celebration stars (script.js creates these around the water bar) */
+.star {
+    position: absolute;
+    color: var(--cw-yellow);
+    font-size: 20px;
+    text-shadow: 0 0 3px #000;
+    pointer-events: none;
+    opacity: 0; /* invisible until its animation starts */
+    animation: twinkle 0.9s ease-out forwards;
+}
+
+/* Pop in, spin a little, and fade away */
+@keyframes twinkle {
+    0%   { opacity: 0; transform: scale(0.3) rotate(0deg); }
+    30%  { opacity: 1; transform: scale(1.3) rotate(20deg); }
+    100% { opacity: 0; transform: scale(0.8) rotate(45deg) translateY(-12px); }
 }
 
 /* Days survived (top-right) */
