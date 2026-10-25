@@ -1,16 +1,22 @@
 // =====================================================
 // 1. CONSTANTS (numbers that never change while playing)
 // =====================================================
-const DAY_LENGTH = 60; // how long one day lasts, in seconds (used in milestone 5)
+const DAY_LENGTH = 20;      // how long daytime lasts, in seconds
+const NIGHT_LENGTH = 2.5;  // how long night lasts, in seconds
+const DAYS_TO_WIN = 10;  // survive this many days and charity: water builds a pump
+
+// Where the player starts, and where they're sent back to at night
+const HOME_POSITION = { x: 330, y: 345 };
 
 const GAME_WIDTH = 800;  // must match #game width in styles.css
 const GAME_HEIGHT = 600; // must match #game height in styles.css
 
 const TICK_MS = 30;        // the game loop runs every 30 milliseconds (about 33 times a second)
-const PLAYER_SPEED = 3;    // pixels the player moves each tick (slow on purpose: walking is a chore!)
+const PLAYER_SPEED = 4;    // pixels the player moves each tick (slow-ish on purpose: walking is a chore!)
 const PLAYER_HALF_SIZE = 20; // half the player's size, so they can't walk halfway out of the box
 
-const DRAIN_PER_SECOND = 1;  // how much village water is used up each second (out of 100)
+const DRAIN_PER_SECOND = 1;        // how much village water is used up each second during the day (out of 100)
+const NIGHT_DRAIN_PER_SECOND = 0.5; // water still gets used at night, just less
 const LOW_WATER_LEVEL = 25;  // below this, the water bar turns red as a warning
 
 const WATER_PER_TRIP = 15;     // how much one bucket adds to the village water (out of 100)
@@ -34,7 +40,8 @@ const KEY_DIRECTIONS = {
 const SPRITES = {
     house: '🛖',
     tree: '🌳',
-    'water-hole': ''
+    'water-hole': '',
+    pump: '🚰'
 };
 
 // =====================================================
@@ -47,11 +54,12 @@ const state = {
 
     water: 60,     // village water level, from 0 to 100
     timeOfDay: 0,  // seconds since sunrise
+    nightTime: 0,  // seconds since nightfall (only counts during the night)
     day: 1,        // days survived
 
     // The player is stored as an "entity" object.
     // Later, villagers will use this same shape.
-    player: { id: 'player', x: 330, y: 345, carrying: false, task: null }
+    player: { id: 'player', x: HOME_POSITION.x, y: HOME_POSITION.y, carrying: false, task: null }
 };
 
 // Which directions are being held down right now.
@@ -103,6 +111,10 @@ const loseMessageEl = document.getElementById('lose-message');
 const tryAgainBtn = document.getElementById('try-again-btn');
 const carryIconEl = document.getElementById('carry-icon');
 const promptEl = document.getElementById('prompt');
+const nightOverlayEl = document.getElementById('night-overlay');
+const messageBoxEl = document.getElementById('message-box');
+const winScreenEl = document.getElementById('win-screen');
+const playAgainBtn = document.getElementById('play-again-btn');
 
 // =====================================================
 // 4. FUNCTIONS
@@ -153,6 +165,12 @@ function isNearVillage() {
 
 // Show a hint above the player's head when they can do something.
 function updatePrompt() {
+    // No hints unless the player can actually do something
+    if (state.phase !== 'playing') {
+        promptEl.classList.add('hidden');
+        return;
+    }
+
     let message = '';
 
     if (isNearWater() && !state.player.carrying) {
@@ -188,7 +206,8 @@ function handleInteract() {
     updateHUD();
 }
 
-// Update the HUD meters and day counter so they match the state.
+// Update the HUD meters so they match the state.
+// (The day counter has its own function below, since it only changes once a day.)
 function updateHUD() {
     // Water bar: width matches the water level (0–100%)
     waterFillEl.style.width = `${state.water}%`;
@@ -199,8 +218,15 @@ function updateHUD() {
     // Daylight bar: full at sunrise, empty at sunset
     const daylightLeft = 100 - (state.timeOfDay / DAY_LENGTH) * 100;
     dayFillEl.style.height = `${daylightLeft}%`;
+}
 
+// Show the new day number and make it "pop" (grow, then shrink back).
+function updateDayCounter() {
     dayCounterEl.textContent = `Day ${state.day}`;
+
+    // Adding the 'pop' class starts the CSS animation.
+    // It's removed again when the animation ends (see the 'animationend' listener).
+    dayCounterEl.classList.add('pop');
 }
 
 // Move the player one step based on which directions are held down.
@@ -230,16 +256,102 @@ function movePlayer() {
 }
 
 // Use up a little of the village's water. Called once per tick.
-function drainWater() {
-    // DRAIN_PER_SECOND is per second, but a tick is only TICK_MS long,
+// ratePerSecond is DRAIN_PER_SECOND in the day, NIGHT_DRAIN_PER_SECOND at night.
+function drainWater(ratePerSecond) {
+    // The rate is per second, but a tick is only TICK_MS long,
     // so only drain that fraction of a second's worth.
-    const drainThisTick = DRAIN_PER_SECOND * (TICK_MS / 1000);
+    const drainThisTick = ratePerSecond * (TICK_MS / 1000);
 
     // Math.max keeps the water from going below 0
     state.water = Math.max(state.water - drainThisTick, 0);
 }
 
-// Check if the player has lost (win check comes in milestone 5).
+// Show a message at the top of the game box.
+function showMessage(text) {
+    messageBoxEl.textContent = text;
+    messageBoxEl.classList.remove('hidden');
+}
+
+function hideMessage() {
+    messageBoxEl.classList.add('hidden');
+}
+
+// Move the daytime clock forward one tick. When the day is over, start the night.
+function advanceDay() {
+    state.timeOfDay += TICK_MS / 1000;
+
+    if (state.timeOfDay >= DAY_LENGTH) {
+        startNight();
+    }
+}
+
+// Night falls: send the player home and stop them collecting water.
+function startNight() {
+    state.phase = 'night';
+    state.timeOfDay = DAY_LENGTH; // keep the daylight bar empty all night
+    state.nightTime = 0;
+
+    // Everyone heads home for the night
+    state.player.x = HOME_POSITION.x;
+    state.player.y = HOME_POSITION.y;
+
+    // Any water still in the bucket spills on the way home (it's a hard life!)
+    state.player.carrying = false;
+    renderPlayer();
+
+    nightOverlayEl.classList.add('active');
+    showMessage("Night has fallen. It's too dark to collect water, so you head home.");
+    console.log(`Night ${state.day} begins.`);
+}
+
+// Move the night clock forward one tick. When the night is over, start a new day.
+function advanceNight() {
+    state.nightTime += TICK_MS / 1000;
+
+    if (state.nightTime >= NIGHT_LENGTH) {
+        startNewDay();
+    }
+}
+
+// Morning: either charity: water arrives (win) or a new day begins.
+function startNewDay() {
+    // Made it through the last night? Help has arrived!
+    if (state.day >= DAYS_TO_WIN) {
+        winGame();
+        return;
+    }
+
+    state.day += 1;
+    state.timeOfDay = 0;
+    state.phase = 'playing';
+
+    nightOverlayEl.classList.remove('active');
+    hideMessage();
+    updateDayCounter();
+    console.log(`Day ${state.day} begins.`);
+}
+
+// charity: water builds a water pump for the village. The player wins!
+function winGame() {
+    state.phase = 'won';
+    clearInterval(loopId); // stop the game loop
+
+    nightOverlayEl.classList.remove('active');
+
+    // Add the water pump to the village so the player can see it
+    villageMap.push({ type: 'pump', x: 120, y: 390 });
+    renderWorld(villageMap);
+    showMessage('Help has arrived! charity: water built a water pump for your village!');
+    console.log('You win! charity: water built a pump.');
+
+    // Give the player 3 seconds to see the new pump, then show the win screen
+    setTimeout(() => {
+        hideMessage();
+        winScreenEl.classList.remove('hidden');
+    }, 3000);
+}
+
+// Check if the player has lost. (Winning is checked in startNewDay.)
 function checkWinLose() {
     if (state.water <= 0) {
         loseGame();
@@ -260,11 +372,20 @@ function loseGame() {
 
 // The game loop: runs every TICK_MS milliseconds and updates everything.
 function gameLoop() {
-    // Do nothing unless the game is being played
-    if (state.phase !== 'playing') return;
+    if (state.phase === 'playing') {
+        // Daytime: the player can move, and water drains at the normal rate
+        movePlayer();
+        drainWater(DRAIN_PER_SECOND);
+        advanceDay();
+    } else if (state.phase === 'night') {
+        // Night: no moving, water drains more slowly
+        drainWater(NIGHT_DRAIN_PER_SECOND);
+        advanceNight();
+    } else {
+        // Any other phase (won, lost...): do nothing
+        return;
+    }
 
-    movePlayer();
-    drainWater();
     updateHUD();
     updatePrompt();
     checkWinLose();
@@ -316,6 +437,17 @@ tryAgainBtn.addEventListener('click', () => {
     location.reload();
 });
 
+// When the day counter's pop animation finishes, remove the class
+// so it can be added again (and pop again) tomorrow.
+dayCounterEl.addEventListener('animationend', () => {
+    dayCounterEl.classList.remove('pop');
+});
+
+// Play Again button on the win screen (also TEMPORARY until milestone 6)
+playAgainBtn.addEventListener('click', () => {
+    location.reload();
+});
+
 // =====================================================
 // 6. START-UP
 // =====================================================
@@ -325,4 +457,4 @@ updateHUD();
 
 // Start the game loop
 loopId = setInterval(gameLoop, TICK_MS);
-console.log('Milestone 4: collect water with ENTER and bring it back to a house.');
+console.log(`Milestone 5: survive ${DAYS_TO_WIN} days for charity: water to arrive.`);

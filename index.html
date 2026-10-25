@@ -21,6 +21,12 @@
         <!-- Hint text that appears above the player (e.g. "Press ENTER to collect water") -->
         <div id="prompt" class="hidden"></div>
 
+        <!-- Dark blue layer that fades in at night (HUD stays bright on top of it) -->
+        <div id="night-overlay"></div>
+
+        <!-- Message text at the top of the game (night, help has arrived, and later the tutorial) -->
+        <div id="message-box" class="hidden"></div>
+
         <!-- HUD (heads-up display): sits on top of the world -->
         <div id="hud">
 
@@ -50,6 +56,16 @@
             <h2>Out of water!</h2>
             <p id="lose-message"></p>
             <button id="try-again-btn">Try Again</button>
+        </div>
+
+        <!-- Win screen: hidden until charity: water builds the pump -->
+        <div id="win-screen" class="overlay hidden">
+            <h2>Your village has clean water!</h2>
+            <p>
+                Before the pump, hours of every day went to walking for water.
+                Now that time can go to school, work and family.
+            </p>
+            <button id="play-again-btn">Play Again</button>
         </div>
     </main>
 

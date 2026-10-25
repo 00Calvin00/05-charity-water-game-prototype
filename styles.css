@@ -86,6 +86,10 @@ h1 {
     font-size: 48px;
 }
 
+.pump {
+    font-size: 52px;
+}
+
 /* The water hole is drawn with CSS instead of an emoji */
 .water-hole {
     width: 130px;
@@ -123,6 +127,38 @@ h1 {
     font-size: 14px;
     font-weight: bold;
     pointer-events: none;
+}
+
+/* ---------- Night ---------- */
+#night-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 8; /* above the world and player, below the HUD */
+    background: #0b1a3a;
+    opacity: 0; /* invisible during the day */
+    transition: opacity 1s; /* fade in and out instead of snapping */
+    pointer-events: none;
+}
+
+/* script.js adds this class when night starts */
+#night-overlay.active {
+    opacity: 0.6;
+}
+
+/* ---------- Message box (top of the game) ---------- */
+#message-box {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%); /* center it horizontally */
+    z-index: 11; /* above the HUD */
+    max-width: 460px;
+    padding: 8px 14px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.7);
+    color: var(--cw-yellow);
+    font-weight: bold;
+    text-align: center;
 }
 
 /* ---------- HUD ---------- */
@@ -204,6 +240,20 @@ h1 {
     right: 20px;
     top: 20px;
     font-size: 20px;
+    transform-origin: top right; /* grow from the corner so it stays on screen */
+}
+
+/* script.js adds this class when a new day starts */
+#day-counter.pop {
+    animation: day-pop 1.2s ease-out;
+}
+
+/* Grow to 2x size, hold for a moment, then shrink back */
+@keyframes day-pop {
+    0%   { transform: scale(1); }
+    25%  { transform: scale(2); }
+    60%  { transform: scale(2); }
+    100% { transform: scale(1); }
 }
 
 /* ---------- Overlays (lose screen, and later start/win screens) ---------- */
