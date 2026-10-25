@@ -12,7 +12,10 @@ const GAME_WIDTH = 800;  // must match #game width in styles.css
 const GAME_HEIGHT = 600; // must match #game height in styles.css
 
 const TICK_MS = 30;        // the game loop runs every 30 milliseconds (about 33 times a second)
-const PLAYER_SPEED = 4;    // pixels the player moves each tick (slow-ish on purpose: walking is a chore!)
+const PLAYER_SPEED = 4;    // pixels the player moves each tick with the keyboard (slow-ish on purpose: walking is a chore!)
+const CLICK_WALK_SPEED = 3; // pixels per tick when walking to a tapped/clicked spot.
+                            // Slower than the keyboard because tapping walks in a perfectly straight
+                            // line, which gets you there sooner than steering with the arrow keys.
 const PLAYER_HALF_SIZE = 20; // half the player's size, so they can't walk halfway out of the box
 
 const DRAIN_PER_SECOND = 1;        // how much village water is used up each second during the day (out of 100)
@@ -37,6 +40,14 @@ const KEY_DIRECTIONS = {
     d: 'right',
     arrowright: 'right'
 };
+
+// Is this a touch screen (phone/tablet)? 'pointer: coarse' means a finger instead of a mouse.
+// Used to say "Tap" instead of "Press ENTER" in the hints.
+const IS_TOUCH_SCREEN = window.matchMedia('(pointer: coarse)').matches;
+// The clickable part is wrapped in a span so CSS can underline it (see .hint-action in styles.css).
+const ACTION_HINT = IS_TOUCH_SCREEN
+    ? '<span class="hint-action">Tap here</span>'
+    : 'Press <span class="hint-action">ENTER</span>';
 
 // Which emoji to show for each type of map object.
 // The water hole is drawn with CSS, so it has no emoji.
@@ -69,7 +80,8 @@ function createStartingState() {
         // The player is stored as an "entity" object.
         // Later, villagers will use this same shape.
         // carrying is null (empty bucket), 'clean' or 'dirty'.
-        player: { id: 'player', x: HOME_POSITION.x, y: HOME_POSITION.y, carrying: null, task: null },
+        // target is the spot the player is walking to after a tap/click: { x, y }, or null.
+        player: { id: 'player', x: HOME_POSITION.x, y: HOME_POSITION.y, carrying: null, target: null, task: null },
 
         // Wells and pumps built in the village. They're drawn on the map with the houses and trees.
         // Empty at the start; charity: water's pump is added when you win.
@@ -92,6 +104,9 @@ let winTimeoutId = null;
 
 // The ID of the timer that hides a short message (see showMessage)
 let messageTimeoutId = null;
+
+// The hint currently showing above the player (so we only rebuild it when it changes)
+let currentPromptMessage = '';
 
 // The village screen. x and y are the CENTER of each object, in pixels,
 // measured from the top-left corner of the 800 x 600 game box.
@@ -130,6 +145,9 @@ const villageMap = [
 // =====================================================
 const worldEl = document.getElementById('world');
 const playerEl = document.getElementById('player');
+const gameEl = document.getElementById('game');
+const gameWrapperEl = document.getElementById('game-wrapper');
+const controlsBarEl = document.getElementById('controls-bar');
 const dayFillEl = document.getElementById('day-fill');
 const waterFillEl = document.getElementById('water-fill');
 const dayCounterEl = document.getElementById('day-counter');
@@ -216,18 +234,28 @@ function updatePrompt() {
 
     if (source && !state.player.carrying) {
         const kind = source.type === 'dirty-hole' ? 'dirty' : 'clean';
-        message = `Press ENTER to collect ${kind} water`;
+        message = `${ACTION_HINT} to collect ${kind} water`;
     } else if (source && state.player.carrying) {
         message = 'Your bucket is full! Bring it to the village';
     } else if (isNearVillage() && state.player.carrying) {
-        message = `Press ENTER to deliver ${state.player.carrying} water`;
+        message = `${ACTION_HINT} to deliver ${state.player.carrying} water`;
     }
 
-    promptEl.textContent = message;
+    // Only rebuild the hint when its text changes. This function runs every tick, and
+    // replacing the HTML that often can "eat" clicks (the mouse would press on one
+    // element and release on a brand-new one, so the browser never fires 'click').
+    // innerHTML is safe here because the message is our own text, not something a user typed.
+    if (message !== currentPromptMessage) {
+        promptEl.innerHTML = message;
+        currentPromptMessage = message;
+    }
     promptEl.classList.toggle('hidden', message === '');
 
-    // Place the prompt just above the player
-    promptEl.style.left = `${state.player.x}px`;
+    // Place the prompt just above the player, but keep it inside the game box
+    // so it doesn't get cut off when the player is near the left or right edge.
+    // (offsetWidth = the prompt's width in pixels; the prompt is centered, so use half of it.)
+    const halfWidth = promptEl.offsetWidth / 2;
+    promptEl.style.left = `${clamp(state.player.x, halfWidth + 8, GAME_WIDTH - halfWidth - 8)}px`;
     promptEl.style.top = `${state.player.y - 45}px`;
 }
 
@@ -298,19 +326,79 @@ function movePlayer() {
     if (heldDirections.up) dy -= PLAYER_SPEED;
     if (heldDirections.down) dy += PLAYER_SPEED;
 
-    // Moving diagonally would be faster than moving straight,
-    // so slow down a little when moving in two directions at once.
-    if (dx !== 0 && dy !== 0) {
-        dx *= 0.7;
-        dy *= 0.7;
+    const target = state.player.target;
+
+    if (dx !== 0 || dy !== 0) {
+        // Using the keyboard cancels any tap/click target
+        state.player.target = null;
+
+        // Moving diagonally would be faster than moving straight,
+        // so slow down a little when moving in two directions at once.
+        if (dx !== 0 && dy !== 0) {
+            dx *= 0.7;
+            dy *= 0.7;
+        }
+    } else if (target) {
+        // No keys held, but there's a tapped/clicked spot: walk toward it
+        const distance = getDistance(state.player, target);
+
+        if (distance <= CLICK_WALK_SPEED) {
+            // Close enough: step exactly onto the target and stop
+            dx = target.x - state.player.x;
+            dy = target.y - state.player.y;
+            state.player.target = null;
+        } else {
+            // Take one CLICK_WALK_SPEED-sized step along the straight line to the target.
+            // Dividing by the distance turns the difference into a "direction" of length 1.
+            dx = ((target.x - state.player.x) / distance) * CLICK_WALK_SPEED;
+            dy = ((target.y - state.player.y) / distance) * CLICK_WALK_SPEED;
+        }
     }
 
-    // Move, but keep the player inside the game box.
-    // Math.max stops them going too far left/up, Math.min too far right/down.
-    state.player.x = Math.min(Math.max(state.player.x + dx, PLAYER_HALF_SIZE), GAME_WIDTH - PLAYER_HALF_SIZE);
-    state.player.y = Math.min(Math.max(state.player.y + dy, PLAYER_HALF_SIZE), GAME_HEIGHT - PLAYER_HALF_SIZE);
+    // Move, but keep the player inside the game box
+    state.player.x = clamp(state.player.x + dx, PLAYER_HALF_SIZE, GAME_WIDTH - PLAYER_HALF_SIZE);
+    state.player.y = clamp(state.player.y + dy, PLAYER_HALF_SIZE, GAME_HEIGHT - PLAYER_HALF_SIZE);
 
     renderPlayer();
+}
+
+// Keep a number between a smallest and largest value.
+// Math.max stops it going below min, Math.min stops it going above max.
+function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+}
+
+// Shrink the game to fit small screens (phones, tablets, small windows).
+// Everything inside still uses the same 800 x 600 coordinates; CSS just draws it smaller.
+function fitGameToScreen() {
+    // The screen's size. We use document.documentElement.clientWidth/clientHeight instead of
+    // window.innerWidth/innerHeight because on phones innerWidth can report a "zoomed out" page
+    // that's wider than the actual screen.
+    const screenWidth = document.documentElement.clientWidth;
+    const screenHeight = document.documentElement.clientHeight;
+
+    // Width: the screen minus a 16px gap on each side
+    const availableWidth = screenWidth - 32;
+
+    // Height: from the top of the game down to the bottom of the window,
+    // minus the space the Reset button bar needs (its height plus its margins).
+    // getBoundingClientRect().top already includes the title above the game, if it's showing.
+    const controlsStyle = getComputedStyle(controlsBarEl);
+    const controlsSpace = controlsBarEl.offsetHeight + parseFloat(controlsStyle.marginTop) + parseFloat(controlsStyle.marginBottom);
+    const gameTop = gameWrapperEl.getBoundingClientRect().top + window.scrollY;
+    const availableHeight = screenHeight - gameTop - controlsSpace;
+
+    // Shrink enough to fit both ways, but never grow bigger than full size (1).
+    // Math.max(..., 0.3) stops it from becoming tiny (or negative) in very short windows.
+    const scale = Math.max(Math.min(availableWidth / GAME_WIDTH, availableHeight / GAME_HEIGHT, 1), 0.3);
+
+    gameEl.style.transform = `scale(${scale})`;
+    gameWrapperEl.style.width = `${GAME_WIDTH * scale}px`;
+    gameWrapperEl.style.height = `${GAME_HEIGHT * scale}px`;
+
+    // When the game is drawn smaller, its text gets smaller too.
+    // --text-boost makes text bigger to make up for it (at most 2x), so it stays readable.
+    gameEl.style.setProperty('--text-boost', Math.min(1 / scale, 2));
 }
 
 // Use up a little of the village's water. Called once per tick.
@@ -385,9 +473,10 @@ function startNight() {
     state.timeOfDay = DAY_LENGTH; // keep the daylight bar empty all night
     state.nightTime = 0;
 
-    // Everyone heads home for the night
+    // Everyone heads home for the night (and forgets where they were walking to)
     state.player.x = HOME_POSITION.x;
     state.player.y = HOME_POSITION.y;
+    state.player.target = null;
 
     // Any water still in the bucket spills on the way home (it's a hard life!)
     state.player.carrying = null;
@@ -598,6 +687,39 @@ tryAgainBtn.addEventListener('click', (event) => {
     startGame();
 });
 
+// Tap or click anywhere in the game to walk there.
+// 'pointerdown' works for mouse clicks AND finger taps.
+gameEl.addEventListener('pointerdown', (event) => {
+    if (state.phase !== 'playing') return;
+
+    // Taps on buttons (like the hint above the player) shouldn't move the player
+    if (event.target.closest('button')) return;
+
+    // The game might be drawn smaller than 800 x 600 (see fitGameToScreen),
+    // so convert the tap from screen pixels to game pixels.
+    const rect = gameEl.getBoundingClientRect();
+    const scale = rect.width / GAME_WIDTH;
+    const x = (event.clientX - rect.left) / scale;
+    const y = (event.clientY - rect.top) / scale;
+
+    // Keep the target inside the area the player can actually reach
+    state.player.target = {
+        x: clamp(x, PLAYER_HALF_SIZE, GAME_WIDTH - PLAYER_HALF_SIZE),
+        y: clamp(y, PLAYER_HALF_SIZE, GAME_HEIGHT - PLAYER_HALF_SIZE)
+    };
+});
+
+// Clicking/tapping the hint above the player does the same thing as pressing ENTER
+promptEl.addEventListener('click', (event) => {
+    event.currentTarget.blur();
+    if (state.phase === 'playing') {
+        handleInteract();
+    }
+});
+
+// Re-fit the game whenever the window changes size (or a phone is rotated)
+window.addEventListener('resize', fitGameToScreen);
+
 // When the day counter's pop animation finishes, remove the class
 // so it can be added again (and pop again) tomorrow.
 dayCounterEl.addEventListener('animationend', () => {
@@ -621,5 +743,6 @@ playAgainBtn.addEventListener('click', (event) => {
 // =====================================================
 // Draw the world and HUD. The start screen is showing (it's not hidden in index.html),
 // so the game waits until the Start button is clicked.
+fitGameToScreen(); // size the game for this screen
 resetGame();
-console.log(`Milestone 7: avoid the dirty water! Click Start, survive ${DAYS_TO_WIN} days for charity: water to arrive.`);
+console.log(`Milestone 8: click/tap to walk! Click Start, survive ${DAYS_TO_WIN} days for charity: water to arrive.`);

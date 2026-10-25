@@ -9,6 +9,10 @@
 <body>
     <h1>Go Get The Water!</h1>
 
+    <!-- The wrapper takes up exactly the space of the game AFTER it's scaled to fit the screen
+         (script.js sets its size in fitGameToScreen) -->
+    <div id="game-wrapper">
+
     <!-- The game box. Everything inside is positioned relative to this box. -->
     <main id="game">
 
@@ -18,8 +22,9 @@
         <!-- The player character. The water can only shows while carrying water. -->
         <div id="player" class="sprite">🧍<img id="carry-icon" class="hidden" src="img/water-can-transparent.png" alt="Carrying water"></div>
 
-        <!-- Hint text that appears above the player (e.g. "Press ENTER to collect water") -->
-        <div id="prompt" class="hidden"></div>
+        <!-- Hint that appears above the player (e.g. "Press ENTER to collect water").
+             It's a button so it can also be clicked or tapped. -->
+        <button id="prompt" class="hidden"></button>
 
         <!-- Dark blue layer that fades in at night (HUD stays bright on top of it) -->
         <div id="night-overlay"></div>
@@ -56,6 +61,10 @@
         <div id="start-screen" class="overlay">
             <h2>Go Get The Water!</h2>
             <p>Your village needs water to survive. Walk to the water hole, fill your bucket and bring it home before the water runs out.</p>
+            <p class="controls-help">
+                Move: arrow keys, WASD, or tap/click where you want to walk.<br>
+                Collect &amp; deliver: ENTER, or tap/click the hint above your head.
+            </p>
             <button id="start-btn">Start</button>
         </div>
 
@@ -76,6 +85,7 @@
             <button id="play-again-btn">Play Again</button>
         </div>
     </main>
+    </div>
 
     <!-- Controls under the game box (outside #game so they never cover the map) -->
     <div id="controls-bar">

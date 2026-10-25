@@ -45,10 +45,25 @@ body {
 }
 
 h1 {
-    margin: 20px 0;
+    margin: 20px 16px;
+    text-align: center;
 }
 
 /* ---------- Game box ---------- */
+
+/* script.js sets this wrapper's width and height to the game's size AFTER scaling,
+   so the page lays out around the smaller game correctly */
+#game-wrapper {
+    position: relative;
+    flex-shrink: 0; /* don't let the page's flexbox squash it */
+    /* Never wider than the screen (minus a 16px gap each side), even for the split second
+       before script.js sizes it. Phones zoom the whole page out if anything is wider than
+       the screen, which cuts the game off. */
+    max-width: calc(100vw - 32px);
+    overflow: hidden; /* hide the unscaled 800px "ghost" size so the page can't scroll sideways */
+    border-radius: 8px;
+}
+
 #game {
     /* position: relative makes this box the "anchor" for everything inside it.
        Children with position: absolute are placed using left/top from this box's corner. */
@@ -58,6 +73,13 @@ h1 {
     background: var(--grass);
     border-radius: 8px;
     overflow: hidden; /* hide anything that goes outside the box */
+
+    /* script.js shrinks the game with transform: scale(). Shrink toward the top-left corner
+       so it lines up with the wrapper. */
+    transform-origin: top left;
+
+    /* Stop double-tap-to-zoom on phones so quick taps feel instant */
+    touch-action: manipulation;
 }
 
 #world {
@@ -144,19 +166,27 @@ h1 {
     transform: rotate(45deg);
 }
 
-/* Hint text above the player's head */
+/* Hint above the player's head. It's a <button> so it can be clicked/tapped. */
 #prompt {
     position: absolute;
     z-index: 6;
     transform: translate(-50%, -100%); /* center it above the point we give it */
     white-space: nowrap;
     padding: 4px 10px;
+    border: none;
     border-radius: 4px;
     background: rgba(0, 0, 0, 0.7);
     color: var(--cw-yellow);
-    font-size: 14px;
+    font-family: inherit; /* buttons don't use the page font unless we tell them to */
+    font-size: calc(14px * var(--text-boost, 1));
     font-weight: bold;
-    pointer-events: none;
+    cursor: pointer;
+}
+
+/* The clickable word(s) in the hint ("ENTER" or "Tap here"), underlined like a link */
+.hint-action {
+    text-decoration: underline;
+    text-underline-offset: 3px; /* a little gap between the text and the line */
 }
 
 /* ---------- Night ---------- */
@@ -182,7 +212,9 @@ h1 {
     left: 50%;
     transform: translateX(-50%); /* center it horizontally */
     z-index: 11; /* above the HUD */
-    max-width: 460px;
+    /* min() picks whichever is smaller, so the box never gets wider than 92% of the game */
+    max-width: min(calc(460px * var(--text-boost, 1)), 92%);
+    font-size: calc(16px * var(--text-boost, 1));
     padding: 8px 14px;
     border-radius: 6px;
     background: rgba(0, 0, 0, 0.7);
@@ -201,14 +233,14 @@ h1 {
 
 .hud-label {
     font-weight: bold;
-    font-size: 14px;
+    font-size: calc(14px * var(--text-boost, 1));
     color: var(--cw-yellow);
     /* Dark outline so yellow text is readable on the grass */
     text-shadow: 0 0 3px #000, 0 0 3px #000;
 }
 
 .hud-icon {
-    font-size: 28px;
+    font-size: calc(28px * var(--text-boost, 1));
 }
 
 /* Daylight tracker (vertical, top-left) */
@@ -300,7 +332,7 @@ h1 {
     position: absolute;
     right: 20px;
     top: 20px;
-    font-size: 20px;
+    font-size: calc(20px * var(--text-boost, 1));
     transform-origin: top right; /* grow from the corner so it stays on screen */
 }
 
@@ -334,18 +366,18 @@ h1 {
 }
 
 .overlay h2 {
-    font-size: 40px;
+    font-size: calc(40px * var(--text-boost, 1));
     margin: 0 0 12px;
 }
 
 .overlay p {
     color: #fff;
-    font-size: 18px;
+    font-size: calc(18px * var(--text-boost, 1));
     margin: 0 0 24px;
 }
 
 .overlay button {
-    font-size: 20px;
+    font-size: calc(20px * var(--text-boost, 1));
     font-weight: bold;
     padding: 12px 28px;
     border: none;
@@ -383,4 +415,35 @@ h1 {
 #reset-btn:hover {
     background: var(--cw-yellow);
     color: #000;
+}
+
+/* Smaller "how to play" text on the start screen */
+.overlay p.controls-help {
+    font-size: calc(14px * var(--text-boost, 1));
+    color: var(--cw-yellow);
+}
+
+/* ---------- Small screens ---------- */
+
+/* Phones (narrow screens): smaller title */
+@media (max-width: 600px) {
+    h1 {
+        font-size: 24px;
+        margin: 12px 16px;
+    }
+
+    #controls-bar {
+        margin: 12px 0 16px;
+    }
+}
+
+/* Phones turned sideways (short screens): hide the title to give the game more room */
+@media (max-height: 500px) {
+    h1 {
+        display: none;
+    }
+
+    #controls-bar {
+        margin: 8px 0;
+    }
 }
