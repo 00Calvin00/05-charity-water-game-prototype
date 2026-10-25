@@ -86,8 +86,12 @@ h1 {
     font-size: 48px;
 }
 
+/* The water pump is drawn with an image (transparent background) */
 .pump {
-    font-size: 52px;
+    width: 56px;
+    height: 67px;
+    /* contain = fit the whole image inside without stretching it */
+    background: url('img/water-pump.png') center / contain no-repeat;
 }
 
 /* The water hole is drawn with CSS instead of an emoji */
@@ -301,4 +305,25 @@ h1 {
 /* Hides any element. script.js adds or removes this class to show/hide things. */
 .hidden {
     display: none;
+}
+
+/* ---------- Controls under the game box ---------- */
+#controls-bar {
+    margin: 16px 0 24px;
+}
+
+#reset-btn {
+    font-size: 16px;
+    font-weight: bold;
+    padding: 8px 24px;
+    border: 2px solid var(--cw-yellow);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--cw-yellow);
+    cursor: pointer;
+}
+
+#reset-btn:hover {
+    background: var(--cw-yellow);
+    color: #000;
 }

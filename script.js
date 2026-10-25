@@ -3,7 +3,7 @@
 // =====================================================
 const DAY_LENGTH = 20;      // how long daytime lasts, in seconds
 const NIGHT_LENGTH = 2.5;  // how long night lasts, in seconds
-const DAYS_TO_WIN = 10;  // survive this many days and charity: water builds a pump
+const DAYS_TO_WIN = 4;  // survive this many days and charity: water builds a pump
 
 // Where the player starts, and where they're sent back to at night
 const HOME_POSITION = { x: 330, y: 345 };
@@ -41,26 +41,38 @@ const SPRITES = {
     house: '🛖',
     tree: '🌳',
     'water-hole': '',
-    pump: '🚰'
+    pump: '' // drawn with an image in styles.css
 };
 
 // =====================================================
 // 2. GAME STATE (everything that changes while playing)
 // =====================================================
-const state = {
-    // What the game is doing right now. Only 'playing' lets the player move.
-    // (In milestone 6 the game will start as 'start' and wait for the Start button.)
-    phase: 'playing',
+// Build a brand-new copy of the starting game state.
+// It's a function so resetGame() can get a fresh copy every time someone plays again.
+function createStartingState() {
+    return {
+        // What the game is doing right now:
+        // 'start' (waiting for Start button), 'playing', 'night', 'won' or 'lost'.
+        // Only 'playing' lets the player move.
+        phase: 'start',
 
-    water: 60,     // village water level, from 0 to 100
-    timeOfDay: 0,  // seconds since sunrise
-    nightTime: 0,  // seconds since nightfall (only counts during the night)
-    day: 1,        // days survived
+        water: 60,     // village water level, from 0 to 100
+        timeOfDay: 0,  // seconds since sunrise
+        nightTime: 0,  // seconds since nightfall (only counts during the night)
+        day: 1,        // days survived
 
-    // The player is stored as an "entity" object.
-    // Later, villagers will use this same shape.
-    player: { id: 'player', x: HOME_POSITION.x, y: HOME_POSITION.y, carrying: false, task: null }
-};
+        // The player is stored as an "entity" object.
+        // Later, villagers will use this same shape.
+        player: { id: 'player', x: HOME_POSITION.x, y: HOME_POSITION.y, carrying: false, task: null },
+
+        // Wells and pumps built in the village. They're drawn on the map with the houses and trees.
+        // Empty at the start; charity: water's pump is added when you win.
+        wells: []
+    };
+}
+
+// 'let' instead of 'const' because resetGame() replaces it with a fresh copy
+let state = createStartingState();
 
 // Which directions are being held down right now.
 // keydown sets these to true, keyup sets them back to false.
@@ -68,6 +80,9 @@ const heldDirections = { up: false, down: false, left: false, right: false };
 
 // The ID of the game loop timer, so we can stop it later with clearInterval()
 let loopId = null;
+
+// The ID of the timer that shows the win screen, so Reset can cancel it with clearTimeout()
+let winTimeoutId = null;
 
 // The village screen. x and y are the CENTER of each object, in pixels,
 // measured from the top-left corner of the 800 x 600 game box.
@@ -115,6 +130,9 @@ const nightOverlayEl = document.getElementById('night-overlay');
 const messageBoxEl = document.getElementById('message-box');
 const winScreenEl = document.getElementById('win-screen');
 const playAgainBtn = document.getElementById('play-again-btn');
+const startScreenEl = document.getElementById('start-screen');
+const startBtn = document.getElementById('start-btn');
+const resetBtn = document.getElementById('reset-btn');
 
 // =====================================================
 // 4. FUNCTIONS
@@ -338,14 +356,16 @@ function winGame() {
 
     nightOverlayEl.classList.remove('active');
 
-    // Add the water pump to the village so the player can see it
-    villageMap.push({ type: 'pump', x: 120, y: 390 });
-    renderWorld(villageMap);
+    // Add the water pump to the village so the player can see it.
+    // .concat() joins the two arrays so the pump is drawn along with the houses and trees.
+    state.wells.push({ type: 'pump', x: 120, y: 390 });
+    renderWorld(villageMap.concat(state.wells));
     showMessage('Help has arrived! charity: water built a water pump for your village!');
     console.log('You win! charity: water built a pump.');
 
-    // Give the player 3 seconds to see the new pump, then show the win screen
-    setTimeout(() => {
+    // Give the player 3 seconds to see the new pump, then show the win screen.
+    // The win screen stays up until the player clicks Play Again or Reset.
+    winTimeoutId = setTimeout(() => {
         hideMessage();
         winScreenEl.classList.remove('hidden');
     }, 3000);
@@ -368,6 +388,52 @@ function loseGame() {
     loseScreenEl.classList.remove('hidden');
 
     console.log('Game over: out of water.');
+}
+
+// Let go of every direction key (so the player doesn't keep walking by themselves).
+function releaseAllKeys() {
+    heldDirections.up = false;
+    heldDirections.down = false;
+    heldDirections.left = false;
+    heldDirections.right = false;
+}
+
+// Put everything back to how it was at the very beginning.
+function resetGame() {
+    // Stop the old game loop so we never have two loops running at once
+    // (that would make the game run twice as fast!)
+    clearInterval(loopId);
+
+    // If Reset is clicked during the "Help has arrived!" message,
+    // cancel the timer so the win screen doesn't pop up over the new game
+    clearTimeout(winTimeoutId);
+
+    // Fresh copy of all the starting values
+    state = createStartingState();
+    releaseAllKeys();
+
+    // Hide anything left over from the last game
+    loseScreenEl.classList.add('hidden');
+    winScreenEl.classList.add('hidden');
+    nightOverlayEl.classList.remove('active');
+    hideMessage();
+
+    // Redraw everything (this also removes the pump if the last game was won)
+    renderWorld(villageMap.concat(state.wells));
+    renderPlayer();
+    updateHUD();
+    updatePrompt();
+    dayCounterEl.textContent = `Day ${state.day}`;
+}
+
+// Start playing: hide the start screen and start the game loop.
+function startGame() {
+    startScreenEl.classList.add('hidden');
+    state.phase = 'playing';
+
+    clearInterval(loopId); // just in case a loop is already running
+    loopId = setInterval(gameLoop, TICK_MS);
+    console.log('Game started!');
 }
 
 // The game loop: runs every TICK_MS milliseconds and updates everything.
@@ -397,6 +463,9 @@ function gameLoop() {
 
 // When a key is pressed down, remember its direction
 document.addEventListener('keydown', (event) => {
+    // On the win or lose screen, keys do nothing. Only the buttons restart the game.
+    if (state.phase === 'won' || state.phase === 'lost') return;
+
     const direction = KEY_DIRECTIONS[event.key.toLowerCase()];
 
     if (direction) {
@@ -423,18 +492,31 @@ document.addEventListener('keyup', (event) => {
 // If the window loses focus (e.g. you click another app) while a key is held,
 // the browser never sends keyup, so the player would keep walking forever.
 // Let go of every direction to prevent that.
-window.addEventListener('blur', () => {
-    heldDirections.up = false;
-    heldDirections.down = false;
-    heldDirections.left = false;
-    heldDirections.right = false;
+window.addEventListener('blur', releaseAllKeys);
+
+// IMPORTANT: every button handler calls event.currentTarget.blur().
+// A clicked button stays "focused", and pressing ENTER on a focused button clicks it again.
+// Since ENTER is also our collect/deliver key, that would restart the game by accident!
+
+// Start button (only on the very first game)
+startBtn.addEventListener('click', (event) => {
+    event.currentTarget.blur();
+    startGame();
 });
 
-// Try Again button.
-// TEMPORARY: for now it just reloads the page. In milestone 6 this will call
-// resetGame() instead, which resets everything without a reload and skips the tutorial.
-tryAgainBtn.addEventListener('click', () => {
-    location.reload();
+// Reset button (always visible under the game): restart whenever the player wants
+resetBtn.addEventListener('click', (event) => {
+    event.currentTarget.blur();
+    resetGame();
+    startGame();
+});
+
+// Try Again button (lose screen): reset and jump straight back into the game.
+// The start screen isn't shown again (and in milestone 9, neither is the tutorial).
+tryAgainBtn.addEventListener('click', (event) => {
+    event.currentTarget.blur();
+    resetGame();
+    startGame();
 });
 
 // When the day counter's pop animation finishes, remove the class
@@ -443,18 +525,17 @@ dayCounterEl.addEventListener('animationend', () => {
     dayCounterEl.classList.remove('pop');
 });
 
-// Play Again button on the win screen (also TEMPORARY until milestone 6)
-playAgainBtn.addEventListener('click', () => {
-    location.reload();
+// Play Again button (win screen): same as Try Again
+playAgainBtn.addEventListener('click', (event) => {
+    event.currentTarget.blur();
+    resetGame();
+    startGame();
 });
 
 // =====================================================
 // 6. START-UP
 // =====================================================
-renderWorld(villageMap);
-renderPlayer();
-updateHUD();
-
-// Start the game loop
-loopId = setInterval(gameLoop, TICK_MS);
-console.log(`Milestone 5: survive ${DAYS_TO_WIN} days for charity: water to arrive.`);
+// Draw the world and HUD. The start screen is showing (it's not hidden in index.html),
+// so the game waits until the Start button is clicked.
+resetGame();
+console.log(`Milestone 6: click Start, survive ${DAYS_TO_WIN} days for charity: water to arrive.`);
